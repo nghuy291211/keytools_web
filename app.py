@@ -24,6 +24,7 @@ def init_db():
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             username TEXT UNIQUE NOT NULL,
             password TEXT NOT NULL,
+            plain_password TEXT DEFAULT '',
             is_super INTEGER DEFAULT 0
         )
     ''')
@@ -46,8 +47,8 @@ def init_db():
     super_admin = cursor.execute("SELECT * FROM admin_users WHERE username = ?", ("nghuy291211",)).fetchone()
     if not super_admin:
         hashed_pw = generate_password_hash("Huy@29122011@")
-        cursor.execute("INSERT INTO admin_users (username, password, is_super) VALUES (?, ?, 1)",
-                       ("nghuy291211", hashed_pw))
+        cursor.execute("INSERT INTO admin_users (username, password, plain_password, is_super) VALUES (?, ?, ?, 1)",
+                       ("nghuy291211", hashed_pw, "Huy@29122011@", 1))
         conn.commit()
     conn.close()
 
@@ -103,7 +104,7 @@ HTML_DASHBOARD = """
     <style>
         * { box-sizing: border-box; }
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #121212; color: #e0e0e0; margin: 0; padding: 12px; }
-        h2, h3 { color: #00e676; margin-top: 0; }
+        h2, h3, h4 { color: #00e676; margin-top: 0; }
         .container { max-width: 1000px; margin: auto; }
         .card { background: #1e1e1e; padding: 16px; margin-bottom: 16px; border-radius: 10px; border: 1px solid #2d2d2d; }
         
@@ -113,7 +114,9 @@ HTML_DASHBOARD = """
         
         .btn { padding: 10px 16px; border-radius: 6px; border: none; font-weight: bold; cursor: pointer; font-size: 14px; width: 100%; margin-top: 5px; }
         .btn-success { background: #00e676; color: #000; }
+        .btn-warning { background: #ffb300; color: #000; }
         .btn-danger { background: #ff5252; color: #fff; padding: 6px 10px; font-size: 12px; width: auto; }
+        .btn-copy { background: #00e676; color: #000; padding: 4px 8px; font-size: 12px; border-radius: 4px; border: none; font-weight: bold; cursor: pointer; margin-left: 6px; }
         
         .table-responsive { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; border-radius: 6px; border: 1px solid #333; }
         table { width: 100%; border-collapse: collapse; min-width: 600px; white-space: nowrap; }
@@ -123,6 +126,9 @@ HTML_DASHBOARD = """
         
         .header { display: flex; flex-direction: column; gap: 8px; margin-bottom: 15px; border-bottom: 1px solid #333; padding-bottom: 10px; }
         a.logout { color: #ff5252; text-decoration: none; font-weight: bold; }
+        .alert { padding: 10px; border-radius: 6px; margin-bottom: 12px; font-size: 13px; }
+        .alert-success { background: #1b5e20; color: #81c784; }
+        .alert-danger { background: #b71c1c; color: #e57373; }
         
         @media (min-width: 600px) {
             .header { flex-direction: row; justify-content: space-between; align-items: center; }
@@ -131,12 +137,52 @@ HTML_DASHBOARD = """
             .form-row .form-group { flex: 1; margin-bottom: 0; }
         }
     </style>
+    <script>
+        function copyToClipboard(text) {
+            if (!text) {
+                alert('Không có nội dung để sao chép!');
+                return;
+            }
+            navigator.clipboard.writeText(text).then(function() {
+                alert('Đã sao chép thành công: ' + text);
+            }, function(err) {
+                alert('Lỗi sao chép: ' + err);
+            });
+        }
+    </script>
 </head>
 <body>
     <div class="container">
         <div class="header">
             <h2>Hệ Thống Quản Lý Key</h2>
             <div>Xin chào, <b>{{ session['admin'] }}</b> | <a class="logout" href="/logout">Đăng xuất</a></div>
+        </div>
+
+        {% if msg %}
+            <div class="alert alert-success">{{ msg }}</div>
+        {% endif %}
+        {% if err %}
+            <div class="alert alert-danger">{{ err }}</div>
+        {% endif %}
+
+        <!-- Form Đổi Mật Khẩu -->
+        <div class="card">
+            <h3>Đổi Mật Khẩu Tài Khoản</h3>
+            <form action="/change-password" method="POST">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Mật khẩu cũ:</label>
+                        <input type="password" name="old_password" required placeholder="Nhập mật khẩu hiện tại">
+                    </div>
+                    <div class="form-group">
+                        <label>Mật khẩu mới:</label>
+                        <input type="password" name="new_password" required placeholder="Nhập mật khẩu mới">
+                    </div>
+                    <div class="form-group">
+                        <button type="submit" class="btn btn-warning">Đổi Mật Khẩu</button>
+                    </div>
+                </div>
+            </form>
         </div>
 
         <!-- Form Tạo Key -->
@@ -183,7 +229,10 @@ HTML_DASHBOARD = """
                         {% for k in keys %}
                         <tr>
                             <td>{{ k['id'] }}</td>
-                            <td><b style="color:#00e676;">{{ k['key_code'] }}</b></td>
+                            <td>
+                                <b style="color:#00e676;">{{ k['key_code'] }}</b>
+                                <button class="btn-copy" onclick="copyToClipboard('{{ k['key_code'] }}')">Sao chép Key</button>
+                            </td>
                             <td>{{ k['used_devices'] }} / {{ k['max_devices'] }}</td>
                             <td>
                                 {% if k['status'] == 'active' %}
@@ -223,13 +272,14 @@ HTML_DASHBOARD = """
                 </div>
             </form>
 
-            <h4 style="margin-top: 20px; color:#00e676;">Danh Sách Admin</h4>
+            <h4 style="margin-top: 20px;">Danh Sách Admin</h4>
             <div class="table-responsive">
                 <table>
                     <thead>
                         <tr>
                             <th>ID</th>
                             <th>Tên Admin</th>
+                            <th>Mật Khẩu</th>
                             <th>Cấp độ</th>
                             <th>Hành Động</th>
                         </tr>
@@ -238,7 +288,24 @@ HTML_DASHBOARD = """
                         {% for a in admins %}
                         <tr>
                             <td>{{ a['id'] }}</td>
-                            <td>{{ a['username'] }}</td>
+                            <td>
+                                <b>{{ a['username'] }}</b>
+                                {% if is_super_admin and a['is_super'] == 0 %}
+                                    <button class="btn-copy" onclick="copyToClipboard('{{ a['username'] }}')">Copy TK</button>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if is_super_admin %}
+                                    {% if a['is_super'] == 0 %}
+                                        <span>{{ a['plain_password'] or '******' }}</span>
+                                        <button class="btn-copy" onclick="copyToClipboard('{{ a['plain_password'] }}')">Copy MK</button>
+                                    {% else %}
+                                        <i>Mật Khẩu Gốc</i>
+                                    {% endif %}
+                                {% else %}
+                                    <i>Ẩn Mật Khẩu</i>
+                                {% endif %}
+                            </td>
                             <td>{% if a['is_super'] == 1 %}<b style="color:#00e676">SUPER ADMIN</b>{% else %}Admin{% endif %}</td>
                             <td>
                                 {% if is_super_admin and a['is_super'] == 0 %}
@@ -246,7 +313,7 @@ HTML_DASHBOARD = """
                                         <button class="btn btn-danger">Xóa Admin</button>
                                     </a>
                                 {% else %}
-                                    <i style="color:#777;">Không thể xóa</i>
+                                    <i style="color:#777;">Không thể thao tác</i>
                                 {% endif %}
                             </td>
                         </tr>
@@ -288,11 +355,35 @@ def logout():
 @app.route('/')
 @login_required
 def dashboard():
+    msg = request.args.get('msg')
+    err = request.args.get('err')
     conn = get_db()
     keys = conn.execute("SELECT * FROM keys ORDER BY id DESC").fetchall()
     admins = conn.execute("SELECT * FROM admin_users ORDER BY id ASC").fetchall()
     conn.close()
-    return render_template_string(HTML_DASHBOARD, keys=keys, admins=admins, is_super_admin=(session.get('is_super') == 1))
+    return render_template_string(HTML_DASHBOARD, keys=keys, admins=admins, is_super_admin=(session.get('is_super') == 1), msg=msg, err=err)
+
+@app.route('/change-password', methods=['POST'])
+@login_required
+def change_password():
+    old_password = request.form['old_password']
+    new_password = request.form['new_password']
+    current_username = session['admin']
+
+    conn = get_db()
+    user = conn.execute("SELECT * FROM admin_users WHERE username = ?", (current_username,)).fetchone()
+
+    if not user or not check_password_hash(user['password'], old_password):
+        conn.close()
+        return redirect(url_for('dashboard', err="Mật khẩu cũ không chính xác!"))
+
+    new_hashed_pw = generate_password_hash(new_password)
+    conn.execute("UPDATE admin_users SET password = ?, plain_password = ? WHERE username = ?", 
+                 (new_hashed_pw, new_password, current_username))
+    conn.commit()
+    conn.close()
+
+    return redirect(url_for('dashboard', msg="Đổi mật khẩu thành công!"))
 
 @app.route('/create-key', methods=['POST'])
 @login_required
@@ -336,7 +427,8 @@ def create_admin():
     conn = get_db()
     try:
         hashed_pw = generate_password_hash(password)
-        conn.execute("INSERT INTO admin_users (username, password, is_super) VALUES (?, ?, 0)", (username, hashed_pw))
+        conn.execute("INSERT INTO admin_users (username, password, plain_password, is_super) VALUES (?, ?, ?, 0)", 
+                     (username, hashed_pw, password))
         conn.commit()
     except sqlite3.IntegrityError:
         pass
@@ -360,7 +452,6 @@ def api_verify_key():
     data = request.get_json() or {}
     key_code = data.get('key', '').strip()
 
-    # Lấy chính xác IP thực của Client qua Proxy/CDN Render
     if request.headers.get('X-Forwarded-For'):
         client_ip = request.headers.get('X-Forwarded-For').split(',')[0].strip()
     else:
@@ -376,17 +467,14 @@ def api_verify_key():
         conn.close()
         return jsonify({"valid": False, "message": "Key không tồn tại trên hệ thống!"})
 
-    # Kiểm tra hết hạn
     expires_at = datetime.datetime.strptime(key_data['expires_at'], '%Y-%m-%d %H:%M:%S')
     if datetime.datetime.now() > expires_at:
         conn.close()
         return jsonify({"valid": False, "message": "Key này đã hết hạn sử dụng!"})
 
-    # Lấy danh sách IP hiện tại trong DB
     raw_ip_logs = key_data['ip_logs'] or ''
     ip_list = [ip.strip() for ip in raw_ip_logs.split(',') if ip.strip()]
 
-    # Kiểm tra nếu IP hiện tại chưa từng ghi nhận
     if client_ip not in ip_list:
         if len(ip_list) >= key_data['max_devices']:
             conn.close()
