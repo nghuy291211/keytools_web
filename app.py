@@ -255,7 +255,8 @@ HTML_DASHBOARD = """
             </div>
         </div>
 
-        <!-- Quản lý Admin -->
+        <!-- Quản lý Admin (Chỉ Super Admin mới xem và thực hiện được) -->
+        {% if is_super_admin %}
         <div class="card">
             <h3>Tạo Tài Khoản Admin Chi Nhánh</h3>
             <form action="/create-admin" method="POST">
@@ -290,25 +291,21 @@ HTML_DASHBOARD = """
                             <td>{{ a['id'] }}</td>
                             <td>
                                 <b>{{ a['username'] }}</b>
-                                {% if is_super_admin and a['is_super'] == 0 %}
+                                {% if a['is_super'] == 0 %}
                                     <button class="btn-copy" onclick="copyToClipboard('{{ a['username'] }}')">Copy TK</button>
                                 {% endif %}
                             </td>
                             <td>
-                                {% if is_super_admin %}
-                                    {% if a['is_super'] == 0 %}
-                                        <span>{{ a['plain_password'] or '******' }}</span>
-                                        <button class="btn-copy" onclick="copyToClipboard('{{ a['plain_password'] }}')">Copy MK</button>
-                                    {% else %}
-                                        <i>Mật Khẩu Gốc</i>
-                                    {% endif %}
+                                {% if a['is_super'] == 0 %}
+                                    <span>{{ a['plain_password'] or '******' }}</span>
+                                    <button class="btn-copy" onclick="copyToClipboard('{{ a['plain_password'] }}')">Copy MK</button>
                                 {% else %}
-                                    <i>Ẩn Mật Khẩu</i>
+                                    <i>Mật Khẩu Gốc</i>
                                 {% endif %}
                             </td>
                             <td>{% if a['is_super'] == 1 %}<b style="color:#00e676">SUPER ADMIN</b>{% else %}Admin{% endif %}</td>
                             <td>
-                                {% if is_super_admin and a['is_super'] == 0 %}
+                                {% if a['is_super'] == 0 %}
                                     <a href="/delete-admin/{{ a['id'] }}" onclick="return confirm('Xóa tài khoản Admin này?')">
                                         <button class="btn btn-danger">Xóa Admin</button>
                                     </a>
@@ -322,6 +319,7 @@ HTML_DASHBOARD = """
                 </table>
             </div>
         </div>
+        {% endif %}
     </div>
 </body>
 </html>
@@ -421,29 +419,39 @@ def delete_key(key_id):
 @app.route('/create-admin', methods=['POST'])
 @login_required
 def create_admin():
-    username = request.form['username']
-    password = request.form['password']
+    # Kiểm tra phân quyền: Chỉ Super Admin mới được tạo tài khoản
+    if session.get('is_super') != 1:
+        return redirect(url_for('dashboard', err="Bạn không có quyền thực hiện chức năng này!"))
+        
+    username = request.form['username'].strip()
+    password = request.form['password'].strip()
     
+    if not username or not password:
+        return redirect(url_for('dashboard', err="Tài khoản và mật khẩu không được trống!"))
+
     conn = get_db()
     try:
         hashed_pw = generate_password_hash(password)
         conn.execute("INSERT INTO admin_users (username, password, plain_password, is_super) VALUES (?, ?, ?, 0)", 
                      (username, hashed_pw, password))
         conn.commit()
+        conn.close()
+        return redirect(url_for('dashboard', msg=f"Tạo tài khoản {username} thành công!"))
     except sqlite3.IntegrityError:
-        pass
-    conn.close()
-    return redirect(url_for('dashboard'))
+        conn.close()
+        return redirect(url_for('dashboard', err="Tên đăng nhập đã tồn tại!"))
 
 @app.route('/delete-admin/<int:admin_id>')
 @login_required
 def delete_admin(admin_id):
+    # Kiểm tra phân quyền: Chỉ Super Admin mới được xóa tài khoản
     if session.get('is_super') == 1:
         conn = get_db()
         conn.execute("DELETE FROM admin_users WHERE id = ? AND is_super = 0", (admin_id,))
         conn.commit()
         conn.close()
-    return redirect(url_for('dashboard'))
+        return redirect(url_for('dashboard', msg="Đã xóa tài khoản Admin!"))
+    return redirect(url_for('dashboard', err="Bạn không có quyền thực hiện chức năng này!"))
 
 # ==================== API DÀNH CHO TOOL CLIENT ====================
 
