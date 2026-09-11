@@ -115,7 +115,6 @@ HTML_DASHBOARD = """
         .btn-success { background: #00e676; color: #000; }
         .btn-danger { background: #ff5252; color: #fff; padding: 6px 10px; font-size: 12px; width: auto; }
         
-        /* Bảng hiển thị tự động cuộn trên điện thoại */
         .table-responsive { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; border-radius: 6px; border: 1px solid #333; }
         table { width: 100%; border-collapse: collapse; min-width: 600px; white-space: nowrap; }
         th, td { border: 1px solid #333; padding: 10px; text-align: left; font-size: 13px; }
@@ -140,13 +139,13 @@ HTML_DASHBOARD = """
             <div>Xin chào, <b>{{ session['admin'] }}</b> | <a class="logout" href="/logout">Đăng xuất</a></div>
         </div>
 
-        <!-- Form Tạo Key (Hỗ trợ Custom Key) -->
+        <!-- Form Tạo Key -->
         <div class="card">
             <h3>Tạo Key Mới</h3>
             <form action="/create-key" method="POST">
                 <div class="form-row">
                     <div class="form-group">
-                        <label>Tên Key Custom (Để trống để tự tạo mã):</label>
+                        <label>Tên Key Custom (Để trống để tự tạo):</label>
                         <input type="text" name="custom_key" placeholder="Ví dụ: HUYTOOL2026">
                     </div>
                     <div class="form-group">
@@ -302,7 +301,6 @@ def create_key():
     hours = int(request.form.get('hours', 24))
     max_devices = int(request.form.get('max_devices', 1))
     
-    # Ưu tiên lấy Key Custom, nếu trống thì tự tạo
     if custom_key:
         key_code = custom_key
     else:
@@ -316,7 +314,7 @@ def create_key():
                      (key_code, max_devices, expires_at.strftime('%Y-%m-%d %H:%M:%S')))
         conn.commit()
     except sqlite3.IntegrityError:
-        pass # Tránh trùng mã key
+        pass
     conn.close()
     return redirect(url_for('dashboard'))
 
@@ -361,7 +359,12 @@ def delete_admin(admin_id):
 def api_verify_key():
     data = request.get_json() or {}
     key_code = data.get('key', '').strip()
-    client_ip = request.headers.get('X-Forwarded-For', request.remote_addr)
+
+    # Lấy chính xác IP thực của Client qua Proxy/CDN Render
+    if request.headers.get('X-Forwarded-For'):
+        client_ip = request.headers.get('X-Forwarded-For').split(',')[0].strip()
+    else:
+        client_ip = request.remote_addr.strip()
 
     if not key_code:
         return jsonify({"valid": False, "message": "Key không được để trống!"}), 400
@@ -373,17 +376,24 @@ def api_verify_key():
         conn.close()
         return jsonify({"valid": False, "message": "Key không tồn tại trên hệ thống!"})
 
+    # Kiểm tra hết hạn
     expires_at = datetime.datetime.strptime(key_data['expires_at'], '%Y-%m-%d %H:%M:%S')
     if datetime.datetime.now() > expires_at:
         conn.close()
         return jsonify({"valid": False, "message": "Key này đã hết hạn sử dụng!"})
 
-    ip_list = [ip.strip() for ip in key_data['ip_logs'].split(',') if ip.strip()]
-    
+    # Lấy danh sách IP hiện tại trong DB
+    raw_ip_logs = key_data['ip_logs'] or ''
+    ip_list = [ip.strip() for ip in raw_ip_logs.split(',') if ip.strip()]
+
+    # Kiểm tra nếu IP hiện tại chưa từng ghi nhận
     if client_ip not in ip_list:
         if len(ip_list) >= key_data['max_devices']:
             conn.close()
-            return jsonify({"valid": False, "message": f"Key đã đạt giới hạn tối đa ({key_data['max_devices']}) thiết bị!"})
+            return jsonify({
+                "valid": False, 
+                "message": f"Key đã đạt giới hạn tối đa ({key_data['max_devices']}) thiết bị!"
+            })
         
         ip_list.append(client_ip)
         new_ip_logs = ",".join(ip_list)
