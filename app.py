@@ -68,24 +68,26 @@ HTML_LOGIN = """
 <html>
 <head>
     <title>Đăng nhập Admin</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <style>
-        body { font-family: Arial, sans-serif; background: #121212; color: #fff; display:flex; justify-content:center; align-items:center; height:100vh; margin:0; }
-        .card { background: #1e1e1e; padding: 30px; border-radius: 8px; width: 300px; box-shadow: 0 4px 10px rgba(0,0,0,0.5); }
-        input, button { width: 100%; padding: 10px; margin: 10px 0; border-radius: 4px; border: 1px solid #333; box-sizing: border-box; }
-        input { background: #2a2a2a; color: #fff; }
-        button { background: #007bff; color: white; border: none; cursor: pointer; font-weight: bold; }
-        .error { color: #ff4d4d; font-size: 14px; }
+        * { box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #121212; color: #fff; display:flex; justify-content:center; align-items:center; height:100vh; margin:0; padding: 15px; }
+        .card { background: #1e1e1e; padding: 25px; border-radius: 12px; width: 100%; max-width: 350px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); border: 1px solid #2a2a2a; }
+        h2 { color: #00e676; text-align: center; margin-top: 0; font-size: 20px; }
+        input, button { width: 100%; padding: 12px; margin: 8px 0; border-radius: 6px; border: 1px solid #333; outline: none; }
+        input { background: #2a2a2a; color: #fff; font-size: 14px; }
+        button { background: #00e676; color: #000; font-weight: bold; cursor: pointer; border: none; font-size: 15px; }
+        .error { color: #ff5252; font-size: 13px; text-align: center; }
     </style>
 </head>
 <body>
     <div class="card">
-        <h2>Đăng Nhập Quản Trị</h2>
+        <h2>ĐĂNG NHẬP QUẢN TRỊ</h2>
         {% if error %}<p class="error">{{ error }}</p>{% endif %}
         <form method="POST">
             <input type="text" name="username" placeholder="Tên đăng nhập" required>
             <input type="password" name="password" placeholder="Mật khẩu" required>
-            <button type="submit">Đăng nhập</button>
+            <button type="submit">Đăng Nhập</button>
         </form>
     </div>
 </body>
@@ -97,108 +99,162 @@ HTML_DASHBOARD = """
 <html>
 <head>
     <title>Dashboard Quản Lý Key</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <style>
-        body { font-family: Arial, sans-serif; background: #121212; color: #fff; margin: 20px; }
-        h2, h3 { color: #00e676; }
-        .container { max-width: 1100px; margin: auto; }
-        .card { background: #1e1e1e; padding: 20px; margin-bottom: 20px; border-radius: 8px; }
-        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-        th, td { border: 1px solid #333; padding: 10px; text-align: left; }
-        th { background: #2a2a2a; }
-        input, select, button { padding: 8px; margin: 5px; border-radius: 4px; border: 1px solid #444; background: #2a2a2a; color: #fff; }
-        button { background: #00e676; color: #000; font-weight: bold; cursor: pointer; border: none; }
-        .btn-danger { background: #ff5252; color: #fff; }
-        .header { display: flex; justify-content: space-between; align-items: center; }
+        * { box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #121212; color: #e0e0e0; margin: 0; padding: 12px; }
+        h2, h3 { color: #00e676; margin-top: 0; }
+        .container { max-width: 1000px; margin: auto; }
+        .card { background: #1e1e1e; padding: 16px; margin-bottom: 16px; border-radius: 10px; border: 1px solid #2d2d2d; }
+        
+        .form-group { margin-bottom: 12px; }
+        .form-group label { display: block; margin-bottom: 5px; font-size: 13px; color: #bbb; }
+        input { width: 100%; padding: 10px; border-radius: 6px; border: 1px solid #3d3d3d; background: #2a2a2a; color: #fff; font-size: 14px; }
+        
+        .btn { padding: 10px 16px; border-radius: 6px; border: none; font-weight: bold; cursor: pointer; font-size: 14px; width: 100%; margin-top: 5px; }
+        .btn-success { background: #00e676; color: #000; }
+        .btn-danger { background: #ff5252; color: #fff; padding: 6px 10px; font-size: 12px; width: auto; }
+        
+        /* Bảng hiển thị tự động cuộn trên điện thoại */
+        .table-responsive { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; border-radius: 6px; border: 1px solid #333; }
+        table { width: 100%; border-collapse: collapse; min-width: 600px; white-space: nowrap; }
+        th, td { border: 1px solid #333; padding: 10px; text-align: left; font-size: 13px; }
+        th { background: #2a2a2a; color: #00e676; }
+        tr:nth-child(even) { background: #242424; }
+        
+        .header { display: flex; flex-direction: column; gap: 8px; margin-bottom: 15px; border-bottom: 1px solid #333; padding-bottom: 10px; }
         a.logout { color: #ff5252; text-decoration: none; font-weight: bold; }
+        
+        @media (min-width: 600px) {
+            .header { flex-direction: row; justify-content: space-between; align-items: center; }
+            .btn { width: auto; }
+            .form-row { display: flex; gap: 10px; align-items: flex-end; }
+            .form-row .form-group { flex: 1; margin-bottom: 0; }
+        }
     </style>
 </head>
 <body>
     <div class="container">
         <div class="header">
             <h2>Hệ Thống Quản Lý Key</h2>
-            <p>Xin chào, <b>{{ session['admin'] }}</b> | <a class="logout" href="/logout">Đăng xuất</a></p>
+            <div>Xin chào, <b>{{ session['admin'] }}</b> | <a class="logout" href="/logout">Đăng xuất</a></div>
         </div>
 
-        <!-- Tạo Key Mới -->
+        <!-- Form Tạo Key (Hỗ trợ Custom Key) -->
         <div class="card">
             <h3>Tạo Key Mới</h3>
             <form action="/create-key" method="POST">
-                <label>Thời hạn (Giờ):</label>
-                <input type="number" name="hours" value="24" required min="1">
-                <label>Số thiết bị (IP tối đa):</label>
-                <input type="number" name="max_devices" value="1" required min="1">
-                <button type="submit">Tạo Key</button>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Tên Key Custom (Để trống để tự tạo mã):</label>
+                        <input type="text" name="custom_key" placeholder="Ví dụ: HUYTOOL2026">
+                    </div>
+                    <div class="form-group">
+                        <label>Thời hạn (Giờ):</label>
+                        <input type="number" name="hours" value="24" required min="1">
+                    </div>
+                    <div class="form-group">
+                        <label>Số thiết bị (IP tối đa):</label>
+                        <input type="number" name="max_devices" value="1" required min="1">
+                    </div>
+                    <div class="form-group">
+                        <button type="submit" class="btn btn-success">Tạo Key</button>
+                    </div>
+                </div>
             </form>
         </div>
 
         <!-- Danh sách Key -->
         <div class="card">
             <h3>Danh Sách Key</h3>
-            <table>
-                <tr>
-                    <th>ID</th>
-                    <th>Mã Key</th>
-                    <th>Thiết bị (Đã dùng/Tối đa)</th>
-                    <th>Trạng thái</th>
-                    <th>IP Đã Dùng</th>
-                    <th>Hết Hạn Lúc</th>
-                    <th>Hành Động</th>
-                </tr>
-                {% for k in keys %}
-                <tr>
-                    <td>{{ k['id'] }}</td>
-                    <td><b>{{ k['key_code'] }}</b></td>
-                    <td>{{ k['used_devices'] }} / {{ k['max_devices'] }}</td>
-                    <td>
-                        {% if k['status'] == 'active' %}
-                            <span style="color:#00e676">Hoạt động</span>
-                        {% else %}
-                            <span style="color:#ff5252">Vô hiệu</span>
-                        {% endif %}
-                    </td>
-                    <td><small>{{ k['ip_logs'] or 'Chưa có' }}</small></td>
-                    <td>{{ k['expires_at'] }}</td>
-                    <td>
-                        <a href="/delete-key/{{ k['id'] }}"><button class="btn-danger">Xóa</button></a>
-                    </td>
-                </tr>
-                {% endfor %}
-            </table>
+            <div class="table-responsive">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Mã Key</th>
+                            <th>Thiết bị (Dùng/Tối đa)</th>
+                            <th>Trạng thái</th>
+                            <th>IP Đã Dùng</th>
+                            <th>Hết Hạn Lúc</th>
+                            <th>Hành Động</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for k in keys %}
+                        <tr>
+                            <td>{{ k['id'] }}</td>
+                            <td><b style="color:#00e676;">{{ k['key_code'] }}</b></td>
+                            <td>{{ k['used_devices'] }} / {{ k['max_devices'] }}</td>
+                            <td>
+                                {% if k['status'] == 'active' %}
+                                    <span style="color:#00e676">Hoạt động</span>
+                                {% else %}
+                                    <span style="color:#ff5252">Vô hiệu</span>
+                                {% endif %}
+                            </td>
+                            <td><small>{{ k['ip_logs'] or 'Chưa có' }}</small></td>
+                            <td>{{ k['expires_at'] }}</td>
+                            <td>
+                                <a href="/delete-key/{{ k['id'] }}" onclick="return confirm('Bạn có chắc chắn muốn xóa key này?')">
+                                    <button class="btn btn-danger">Xóa</button>
+                                </a>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
         </div>
 
         <!-- Quản lý Admin -->
         <div class="card">
             <h3>Tạo Tài Khoản Admin Chi Nhánh</h3>
             <form action="/create-admin" method="POST">
-                <input type="text" name="username" placeholder="Tên đăng nhập" required>
-                <input type="password" name="password" placeholder="Mật khẩu" required>
-                <button type="submit">Tạo Admin</button>
+                <div class="form-row">
+                    <div class="form-group">
+                        <input type="text" name="username" placeholder="Tên đăng nhập" required>
+                    </div>
+                    <div class="form-group">
+                        <input type="password" name="password" placeholder="Mật khẩu" required>
+                    </div>
+                    <div class="form-group">
+                        <button type="submit" class="btn btn-success">Tạo Admin</button>
+                    </div>
+                </div>
             </form>
 
-            <h4 style="margin-top: 20px;">Danh Sách Admin</h4>
-            <table>
-                <tr>
-                    <th>ID</th>
-                    <th>Tên Admin</th>
-                    <th>Cấp độ</th>
-                    <th>Hành Động</th>
-                </tr>
-                {% for a in admins %}
-                <tr>
-                    <td>{{ a['id'] }}</td>
-                    <td>{{ a['username'] }}</td>
-                    <td>{% if a['is_super'] == 1 %}<b style="color:#00e676">SUPER ADMIN</b>{% else %}Admin{% endif %}</td>
-                    <td>
-                        {% if is_super_admin and a['is_super'] == 0 %}
-                            <a href="/delete-admin/{{ a['id'] }}"><button class="btn-danger">Xóa Admin</button></a>
-                        {% else %}
-                            <i>Không thể xóa</i>
-                        {% endif %}
-                    </td>
-                </tr>
-                {% endfor %}
-            </table>
+            <h4 style="margin-top: 20px; color:#00e676;">Danh Sách Admin</h4>
+            <div class="table-responsive">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Tên Admin</th>
+                            <th>Cấp độ</th>
+                            <th>Hành Động</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for a in admins %}
+                        <tr>
+                            <td>{{ a['id'] }}</td>
+                            <td>{{ a['username'] }}</td>
+                            <td>{% if a['is_super'] == 1 %}<b style="color:#00e676">SUPER ADMIN</b>{% else %}Admin{% endif %}</td>
+                            <td>
+                                {% if is_super_admin and a['is_super'] == 0 %}
+                                    <a href="/delete-admin/{{ a['id'] }}" onclick="return confirm('Xóa tài khoản Admin này?')">
+                                        <button class="btn btn-danger">Xóa Admin</button>
+                                    </a>
+                                {% else %}
+                                    <i style="color:#777;">Không thể xóa</i>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
         </div>
     </div>
 </body>
@@ -242,16 +298,25 @@ def dashboard():
 @app.route('/create-key', methods=['POST'])
 @login_required
 def create_key():
+    custom_key = request.form.get('custom_key', '').strip()
     hours = int(request.form.get('hours', 24))
     max_devices = int(request.form.get('max_devices', 1))
     
-    key_code = "KEY-" + str(uuid.uuid4()).upper()[:12]
+    # Ưu tiên lấy Key Custom, nếu trống thì tự tạo
+    if custom_key:
+        key_code = custom_key
+    else:
+        key_code = "KEY-" + str(uuid.uuid4()).upper()[:12]
+        
     expires_at = datetime.datetime.now() + datetime.timedelta(hours=hours)
     
     conn = get_db()
-    conn.execute("INSERT INTO keys (key_code, max_devices, expires_at) VALUES (?, ?, ?)",
-                 (key_code, max_devices, expires_at.strftime('%Y-%m-%d %H:%M:%S')))
-    conn.commit()
+    try:
+        conn.execute("INSERT INTO keys (key_code, max_devices, expires_at) VALUES (?, ?, ?)",
+                     (key_code, max_devices, expires_at.strftime('%Y-%m-%d %H:%M:%S')))
+        conn.commit()
+    except sqlite3.IntegrityError:
+        pass # Tránh trùng mã key
     conn.close()
     return redirect(url_for('dashboard'))
 
@@ -283,7 +348,6 @@ def create_admin():
 @app.route('/delete-admin/<int:admin_id>')
 @login_required
 def delete_admin(admin_id):
-    # Chỉ Super Admin mới được xóa Admin
     if session.get('is_super') == 1:
         conn = get_db()
         conn.execute("DELETE FROM admin_users WHERE id = ? AND is_super = 0", (admin_id,))
@@ -309,13 +373,11 @@ def api_verify_key():
         conn.close()
         return jsonify({"valid": False, "message": "Key không tồn tại trên hệ thống!"})
 
-    # Kiểm tra hết hạn
     expires_at = datetime.datetime.strptime(key_data['expires_at'], '%Y-%m-%d %H:%M:%S')
     if datetime.datetime.now() > expires_at:
         conn.close()
         return jsonify({"valid": False, "message": "Key này đã hết hạn sử dụng!"})
 
-    # Kiểm tra IP/Thiết bị
     ip_list = [ip.strip() for ip in key_data['ip_logs'].split(',') if ip.strip()]
     
     if client_ip not in ip_list:
@@ -323,7 +385,6 @@ def api_verify_key():
             conn.close()
             return jsonify({"valid": False, "message": f"Key đã đạt giới hạn tối đa ({key_data['max_devices']}) thiết bị!"})
         
-        # Thêm IP mới
         ip_list.append(client_ip)
         new_ip_logs = ",".join(ip_list)
         new_used_devices = len(ip_list)
@@ -342,4 +403,3 @@ def api_verify_key():
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)
-
