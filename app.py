@@ -47,7 +47,7 @@ def init_db():
     super_admin = cursor.execute("SELECT * FROM admin_users WHERE username = ?", ("nghuy291211",)).fetchone()
     if not super_admin:
         hashed_pw = generate_password_hash("Huy@29122011@")
-        cursor.execute("INSERT INTO admin_users (username, password, plain_password, is_super) VALUES (?, ?, ?, 1)",
+        cursor.execute("INSERT INTO admin_users (username, password, plain_password, is_super) VALUES (?, ?, ?, ?)",
                        ("nghuy291211", hashed_pw, "Huy@29122011@", 1))
         conn.commit()
     conn.close()
