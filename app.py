@@ -11,6 +11,18 @@ app.permanent_session_lifetime = datetime.timedelta(days=30)
 
 DATABASE = "key_system.db"
 
+# ==================== CẤU HÌNH MÚI GIỜ VIỆT NAM (UTC+7) ====================
+VN_TZ = datetime.timezone(datetime.timedelta(hours=7))
+
+def get_vn_now():
+    """Lấy thời gian hiện tại chuẩn giờ Việt Nam (UTC+7)"""
+    return datetime.datetime.now(VN_TZ)
+
+def get_vn_now_str():
+    """Trả về chuỗi thời gian Việt Nam dạng YYYY-MM-DD HH:MM:SS"""
+    return get_vn_now().strftime('%Y-%m-%d %H:%M:%S')
+
+# ==================== KẾT NỐI DATABASE ====================
 def get_db():
     conn = sqlite3.connect(DATABASE)
     conn.row_factory = sqlite3.Row
@@ -44,7 +56,7 @@ def init_db():
             ip_logs TEXT DEFAULT '',
             created_by TEXT DEFAULT 'Hệ thống',
             expires_at DATETIME NOT NULL,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            created_at DATETIME
         )
     ''')
     
@@ -79,9 +91,8 @@ init_db()
 
 def update_last_active():
     if 'admin' in session:
-        now_str = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         conn = get_db()
-        conn.execute("UPDATE admin_users SET last_active = ? WHERE username = ?", (now_str, session['admin']))
+        conn.execute("UPDATE admin_users SET last_active = ? WHERE username = ?", (get_vn_now_str(), session['admin']))
         conn.commit()
         conn.close()
 
@@ -111,7 +122,6 @@ COMMON_CSS = """
         min-height: 100vh;
     }
     
-    /* Neon Text & Cards */
     h1, h2, h3, h4 { font-family: 'Orbitron', sans-serif; letter-spacing: 1px; }
     .neon-title { color: #00f3ff; text-shadow: 0 0 10px rgba(0,243,255,0.7), 0 0 20px rgba(0,243,255,0.4); }
     .neon-pink { color: #ff007f; text-shadow: 0 0 10px rgba(255,0,127,0.7); }
@@ -131,7 +141,6 @@ COMMON_CSS = """
         box-shadow: 0 8px 32px 0 rgba(255, 0, 127, 0.2);
     }
     
-    /* Inputs & Forms */
     .form-group { margin-bottom: 12px; }
     .form-group label { display: block; margin-bottom: 6px; font-size: 14px; color: #00f3ff; font-weight: 600; }
     input[type="text"], input[type="password"], input[type="number"] { 
@@ -146,7 +155,6 @@ COMMON_CSS = """
     }
     input:focus { border-color: #ff007f; box-shadow: 0 0 12px rgba(255,0,127,0.5); }
     
-    /* Buttons */
     .btn { 
         padding: 10px 18px; 
         border-radius: 8px; 
@@ -172,19 +180,16 @@ COMMON_CSS = """
     .btn-copy { background: rgba(0, 243, 255, 0.15); color: #00f3ff; border: 1px solid #00f3ff; padding: 4px 10px; font-size: 11px; border-radius: 6px; cursor: pointer; font-weight: bold; margin-left: 6px; }
     .btn-copy:hover { background: #00f3ff; color: #000; box-shadow: 0 0 10px #00f3ff; }
     
-    /* Tables */
     .table-responsive { width: 100%; overflow-x: auto; border-radius: 10px; border: 1px solid rgba(0, 243, 255, 0.2); }
     table { width: 100%; border-collapse: collapse; min-width: 650px; white-space: nowrap; }
     th, td { border-bottom: 1px solid rgba(255,255,255,0.08); padding: 12px 15px; text-align: left; font-size: 14px; }
     th { background: rgba(0, 243, 255, 0.1); color: #00f3ff; font-family: 'Orbitron', sans-serif; font-size: 12px; }
     tr:hover { background: rgba(255, 0, 127, 0.08); }
     
-    /* Status Badges */
     .badge { padding: 4px 10px; border-radius: 20px; font-size: 11px; font-weight: bold; text-transform: uppercase; }
     .badge-online { background: rgba(0,230,118,0.2); color: #00e676; border: 1px solid #00e676; box-shadow: 0 0 8px rgba(0,230,118,0.5); }
     .badge-offline { background: rgba(158,158,158,0.2); color: #9e9e9e; border: 1px solid #757575; }
     
-    /* Layout */
     .container { max-width: 1100px; margin: auto; }
     .header { display: flex; flex-direction: column; gap: 12px; margin-bottom: 20px; border-bottom: 2px solid rgba(0,243,255,0.3); padding-bottom: 15px; }
     .nav-links a { color: #00f3ff; text-decoration: none; font-weight: bold; margin-left: 12px; font-size: 14px; }
@@ -348,7 +353,7 @@ HTML_DASHBOARD = """
                             <th>Thiết bị (Dùng/Tối đa)</th>
                             <th>Trạng thái</th>
                             <th>IP Đã Dùng</th>
-                            <th>Hết Hạn Lúc</th>
+                            <th>Hết Hạn Lúc (Giờ VN)</th>
                             <th>Hành Động</th>
                         </tr>
                     </thead>
@@ -411,7 +416,7 @@ HTML_DASHBOARD = """
                             <th>Mật Khẩu</th>
                             <th>Cấp độ</th>
                             <th>Trạng Thái</th>
-                            <th>Lần Cuối Hoạt Động</th>
+                            <th>Lần Cuối Hoạt Động (Giờ VN)</th>
                             <th>Hành Động</th>
                         </tr>
                     </thead>
@@ -485,7 +490,7 @@ def login():
             else:
                 session.permanent = False
                 
-            now_str = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            now_str = get_vn_now_str()
             conn.execute("UPDATE admin_users SET last_login = ?, last_active = ? WHERE id = ?", (now_str, now_str, user['id']))
             conn.commit()
             conn.close()
@@ -513,14 +518,14 @@ def dashboard():
     raw_admins = conn.execute("SELECT * FROM admin_users ORDER BY id ASC").fetchall()
     
     admins = []
-    now = datetime.datetime.now()
+    now = get_vn_now().replace(tzinfo=None)
     for a in raw_admins:
         admin_dict = dict(a)
         is_online = False
         if admin_dict.get('last_active'):
             try:
                 last_act = datetime.datetime.strptime(admin_dict['last_active'], '%Y-%m-%d %H:%M:%S')
-                if (now - last_act).total_seconds() < 300: # 5 phút
+                if (now - last_act).total_seconds() < 300: # Trong vòng 5 phút
                     is_online = True
             except ValueError:
                 pass
@@ -568,12 +573,15 @@ def create_key():
     else:
         key_code = "KEY-" + str(uuid.uuid4()).upper()[:12]
         
-    expires_at = datetime.datetime.now() + datetime.timedelta(hours=hours)
+    expires_at = get_vn_now() + datetime.timedelta(hours=hours)
+    created_at = get_vn_now()
     
     conn = get_db()
     try:
-        conn.execute("INSERT INTO keys (key_code, max_devices, created_by, expires_at) VALUES (?, ?, ?, ?)",
-                     (key_code, max_devices, created_by, expires_at.strftime('%Y-%m-%d %H:%M:%S')))
+        conn.execute("INSERT INTO keys (key_code, max_devices, created_by, expires_at, created_at) VALUES (?, ?, ?, ?, ?)",
+                     (key_code, max_devices, created_by, 
+                      expires_at.strftime('%Y-%m-%d %H:%M:%S'), 
+                      created_at.strftime('%Y-%m-%d %H:%M:%S')))
         conn.commit()
     except sqlite3.IntegrityError:
         conn.close()
@@ -648,7 +656,9 @@ def api_verify_key():
         return jsonify({"valid": False, "message": "Key không tồn tại trên hệ thống!"})
 
     expires_at = datetime.datetime.strptime(key_data['expires_at'], '%Y-%m-%d %H:%M:%S')
-    if datetime.datetime.now() > expires_at:
+    now_vn = get_vn_now().replace(tzinfo=None)
+    
+    if now_vn > expires_at:
         conn.close()
         return jsonify({"valid": False, "message": "Key này đã hết hạn sử dụng!"})
 
