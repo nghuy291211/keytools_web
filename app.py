@@ -48,7 +48,7 @@ def init_db():
         )
     ''')
     
-    # Cập nhật cấu trúc bảng nếu dùng DB cũ
+    # Cập nhật cấu trúc bảng nếu nâng cấp từ DB cũ
     try:
         cursor.execute("ALTER TABLE keys ADD COLUMN created_by TEXT DEFAULT 'Hệ thống'")
     except sqlite3.OperationalError:
@@ -205,22 +205,22 @@ COMMON_CSS = """
 </style>
 """
 
-HTML_LOGIN = f"""
+HTML_LOGIN = """
 <!DOCTYPE html>
 <html>
 <head>
     <title>Đăng nhập Admin Cyber</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    {COMMON_CSS}
+    """ + COMMON_CSS + """
     <style>
-        body {{ display:flex; justify-content:center; align-items:center; height:100vh; }}
-        .login-card {{ width: 100%; max-width: 380px; border: 1px solid rgba(255,0,127,0.4); box-shadow: 0 0 25px rgba(255,0,127,0.2); }}
+        body { display:flex; justify-content:center; align-items:center; height:100vh; }
+        .login-card { width: 100%; max-width: 380px; border: 1px solid rgba(255,0,127,0.4); box-shadow: 0 0 25px rgba(255,0,127,0.2); }
     </style>
 </head>
 <body>
     <div class="card login-card">
         <h2 class="neon-title" style="text-align: center; margin-top:0;">SYSTEM LOGIN</h2>
-        {{% if error %}}<div class="alert alert-danger">{{ error }}</div>{{% endif %}}
+        {% if error %}<div class="alert alert-danger">{{ error }}</div>{% endif %}
         <form method="POST">
             <div class="form-group">
                 <label>TÊN ĐĂNG NHẬP</label>
@@ -231,7 +231,6 @@ HTML_LOGIN = f"""
                 <input type="password" name="password" placeholder="Nhập password..." required>
             </div>
             
-            <!-- Ô GIỮ ĐĂNG NHẬP -->
             <label class="checkbox-container">
                 <input type="checkbox" name="remember" value="yes">
                 Ghi nhớ đăng nhập (30 ngày)
@@ -244,21 +243,21 @@ HTML_LOGIN = f"""
 </html>
 """
 
-HTML_CHANGE_PASSWORD = f"""
+HTML_CHANGE_PASSWORD = """
 <!DOCTYPE html>
 <html>
 <head>
     <title>Đổi Mật Khẩu</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    {COMMON_CSS}
+    """ + COMMON_CSS + """
 </head>
 <body>
     <div class="container" style="max-width: 500px; margin-top: 50px;">
         <div class="card">
             <h2 class="neon-pink" style="margin-top:0; text-align:center;">ĐỔI MẬT KHẨU</h2>
             
-            {{% if msg %}}<div class="alert alert-success">{{ msg }}</div>{{% endif %}}
-            {{% if err %}}<div class="alert alert-danger">{{ err }}</div>{{% endif %}}
+            {% if msg %}<div class="alert alert-success">{{ msg }}</div>{% endif %}
+            {% if err %}<div class="alert alert-danger">{{ err }}</div>{% endif %}
 
             <form action="/change-password" method="POST">
                 <div class="form-group">
@@ -280,22 +279,22 @@ HTML_CHANGE_PASSWORD = f"""
 </html>
 """
 
-HTML_DASHBOARD = f"""
+HTML_DASHBOARD = """
 <!DOCTYPE html>
 <html>
 <head>
     <title>Dashboard Cyber Key Manager</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    {COMMON_CSS}
+    """ + COMMON_CSS + """
     <script>
-        function copyToClipboard(text) {{
+        function copyToClipboard(text) {
             if (!text) return alert('Không có nội dung!');
-            navigator.clipboard.writeText(text).then(function() {{
+            navigator.clipboard.writeText(text).then(function() {
                 alert('Đã sao chép: ' + text);
-            }}, function(err) {{
+            }, function(err) {
                 alert('Lỗi: ' + err);
-            }});
-        }}
+            });
+        }
     </script>
 </head>
 <body>
@@ -309,8 +308,8 @@ HTML_DASHBOARD = f"""
             </div>
         </div>
 
-        {{% if msg %}}<div class="alert alert-success">{{ msg }}</div>{{% endif %}}
-        {{% if err %}}<div class="alert alert-danger">{{ err }}</div>{{% endif %}}
+        {% if msg %}<div class="alert alert-success">{{ msg }}</div>{% endif %}
+        {% if err %}<div class="alert alert-danger">{{ err }}</div>{% endif %}
 
         <!-- Form Tạo Key -->
         <div class="card">
@@ -354,7 +353,7 @@ HTML_DASHBOARD = f"""
                         </tr>
                     </thead>
                     <tbody>
-                        {{% for k in keys %}}
+                        {% for k in keys %}
                         <tr>
                             <td>{{ k['id'] }}</td>
                             <td>
@@ -364,11 +363,11 @@ HTML_DASHBOARD = f"""
                             <td><b style="color:#ff007f;">{{ k['created_by'] or 'Hệ thống' }}</b></td>
                             <td>{{ k['used_devices'] }} / {{ k['max_devices'] }}</td>
                             <td>
-                                {{% if k['status'] == 'active' %}}
+                                {% if k['status'] == 'active' %}
                                     <span style="color:#00e676; font-weight:bold;">HOẠT ĐỘNG</span>
-                                {{% else %}}
+                                {% else %}
                                     <span style="color:#ff1744; font-weight:bold;">VÔ HIỆU</span>
-                                {{% endif %}}
+                                {% endif %}
                             </td>
                             <td><small style="color:#aaa;">{{ k['ip_logs'] or 'Chưa có' }}</small></td>
                             <td>{{ k['expires_at'] }}</td>
@@ -378,14 +377,14 @@ HTML_DASHBOARD = f"""
                                 </a>
                             </td>
                         </tr>
-                        {{% endfor %}}
+                        {% endfor %}
                     </tbody>
                 </table>
             </div>
         </div>
 
         <!-- Quản lý Admin (Super Admin) -->
-        {{% if is_super_admin %}}
+        {% if is_super_admin %}
         <div class="card">
             <h3 class="neon-purple">QUẢN LÝ ADMIN & TRẠNG THÁI</h3>
             <form action="/create-admin" method="POST">
@@ -417,48 +416,48 @@ HTML_DASHBOARD = f"""
                         </tr>
                     </thead>
                     <tbody>
-                        {{% for a in admins %}}
+                        {% for a in admins %}
                         <tr>
                             <td>{{ a['id'] }}</td>
                             <td>
                                 <b>{{ a['username'] }}</b>
-                                {{% if a['is_super'] == 0 %}}
+                                {% if a['is_super'] == 0 %}
                                     <button class="btn-copy" onclick="copyToClipboard('{{ a['username'] }}')">Copy</button>
-                                {{% endif %}}
+                                {% endif %}
                             </td>
                             <td>
-                                {{% if a['is_super'] == 0 %}}
+                                {% if a['is_super'] == 0 %}
                                     <span>{{ a['plain_password'] or '******' }}</span>
                                     <button class="btn-copy" onclick="copyToClipboard('{{ a['plain_password'] }}')">Copy</button>
-                                {{% else %}}
+                                {% else %}
                                     <i>Bảo mật Gốc</i>
-                                {{% endif %}}
+                                {% endif %}
                             </td>
-                            <td>{{% if a['is_super'] == 1 %}<b style="color:#00e676">SUPER ADMIN</b>{{% else %}}Admin Chi Nhánh{{% endif %}}</td>
+                            <td>{% if a['is_super'] == 1 %}<b style="color:#00e676">SUPER ADMIN</b>{% else %}Admin Chi Nhánh{% endif %}</td>
                             <td>
-                                {{% if a['is_online'] %}}
+                                {% if a['is_online'] %}
                                     <span class="badge badge-online">● ONLINE</span>
-                                {{% else %}}
+                                {% else %}
                                     <span class="badge badge-offline">○ OFFLINE</span>
-                                {{% endif %}}
+                                {% endif %}
                             </td>
                             <td><small style="color:#aaa;">{{ a['last_active'] or 'Chưa ghi nhận' }}</small></td>
                             <td>
-                                {{% if a['is_super'] == 0 %}}
+                                {% if a['is_super'] == 0 %}
                                     <a href="/delete-admin/{{ a['id'] }}" onclick="return confirm('Xóa Admin này?')">
                                         <button class="btn btn-danger">XÓA</button>
                                     </a>
-                                {{% else %}}
+                                {% else %}
                                     <i style="color:#555;">Mặc định</i>
-                                {{% endif %}}
+                                {% endif %}
                             </td>
                         </tr>
-                        {{% endfor %}}
+                        {% endfor %}
                     </tbody>
                 </table>
             </div>
         </div>
-        {{% endif %}}
+        {% endif %}
     </div>
 </body>
 </html>
@@ -481,7 +480,6 @@ def login():
             session['admin'] = user['username']
             session['is_super'] = user['is_super']
             
-            # Xử lý giữ đăng nhập
             if remember == 'yes':
                 session.permanent = True
             else:
@@ -514,7 +512,6 @@ def dashboard():
     keys = conn.execute("SELECT * FROM keys ORDER BY id DESC").fetchall()
     raw_admins = conn.execute("SELECT * FROM admin_users ORDER BY id ASC").fetchall()
     
-    # Tính toán trạng thái Online / Offline (Trong vòng 5 phút)
     admins = []
     now = datetime.datetime.now()
     for a in raw_admins:
