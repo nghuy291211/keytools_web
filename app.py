@@ -22,6 +22,12 @@ def get_vn_now_str():
     """Trả về chuỗi thời gian Việt Nam dạng YYYY-MM-DD HH:MM:SS"""
     return get_vn_now().strftime('%Y-%m-%d %H:%M:%S')
 
+def get_client_ip():
+    """Lấy IP thực tế của Client"""
+    if request.headers.get('X-Forwarded-For'):
+        return request.headers.get('X-Forwarded-For').split(',')[0].strip()
+    return request.remote_addr.strip() if request.remote_addr else "127.0.0.1"
+
 # ==================== KẾT NỐI DATABASE ====================
 def get_db():
     conn = sqlite3.connect(DATABASE)
@@ -41,7 +47,8 @@ def init_db():
             plain_password TEXT DEFAULT '',
             is_super INTEGER DEFAULT 0,
             last_login DATETIME,
-            last_active DATETIME
+            last_active DATETIME,
+            last_ip TEXT DEFAULT ''
         )
     ''')
     
@@ -76,6 +83,11 @@ def init_db():
     except sqlite3.OperationalError:
         pass
 
+    try:
+        cursor.execute("ALTER TABLE admin_users ADD COLUMN last_ip TEXT DEFAULT ''")
+    except sqlite3.OperationalError:
+        pass
+
     conn.commit()
 
     # Tạo tài khoản Super Admin mặc định
@@ -92,7 +104,8 @@ init_db()
 def update_last_active():
     if 'admin' in session:
         conn = get_db()
-        conn.execute("UPDATE admin_users SET last_active = ? WHERE username = ?", (get_vn_now_str(), session['admin']))
+        conn.execute("UPDATE admin_users SET last_active = ?, last_ip = ? WHERE username = ?", 
+                     (get_vn_now_str(), get_client_ip(), session['admin']))
         conn.commit()
         conn.close()
 
@@ -101,6 +114,16 @@ def login_required(f):
     def decorated_function(*args, **kwargs):
         if 'admin' not in session:
             return redirect(url_for('login'))
+        
+        # Kiểm tra sự tồn tại của Admin trong CSDL (Xoá tài khoản -> Đăng xuất lập tức)
+        conn = get_db()
+        user = conn.execute("SELECT * FROM admin_users WHERE username = ?", (session['admin'],)).fetchone()
+        conn.close()
+
+        if not user:
+            session.clear()
+            return redirect(url_for('login', error="Tài khoản của bạn đã bị xoá khỏi hệ thống!"))
+
         update_last_active()
         return f(*args, **kwargs)
     return decorated_function
@@ -252,26 +275,30 @@ HTML_CHANGE_PASSWORD = """
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Đổi Mật Khẩu</title>
+    <title>Cài Đặt Tài Khoản</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     """ + COMMON_CSS + """
 </head>
 <body>
     <div class="container" style="max-width: 500px; margin-top: 50px;">
         <div class="card">
-            <h2 class="neon-pink" style="margin-top:0; text-align:center;">ĐỔI MẬT KHẨU</h2>
+            <h2 class="neon-pink" style="margin-top:0; text-align:center;">CÀI ĐẶT TÀI KHOẢN</h2>
             
             {% if msg %}<div class="alert alert-success">{{ msg }}</div>{% endif %}
             {% if err %}<div class="alert alert-danger">{{ err }}</div>{% endif %}
 
             <form action="/change-password" method="POST">
                 <div class="form-group">
-                    <label>Mật khẩu hiện tại:</label>
-                    <input type="password" name="old_password" required placeholder="Nhập mật khẩu cũ">
+                    <label>Tên đăng nhập mới:</label>
+                    <input type="text" name="new_username" value="{{ current_username }}" required placeholder="Nhập tên đăng nhập mới">
                 </div>
                 <div class="form-group">
-                    <label>Mật khẩu mới:</label>
-                    <input type="password" name="new_password" required placeholder="Nhập mật khẩu mới">
+                    <label>Mật khẩu hiện tại (Xác nhận):</label>
+                    <input type="password" name="old_password" required placeholder="Nhập mật khẩu hiện tại">
+                </div>
+                <div class="form-group">
+                    <label>Mật khẩu mới (Để trống nếu giữ nguyên):</label>
+                    <input type="password" name="new_password" placeholder="Nhập mật khẩu mới">
                 </div>
                 <div style="display:flex; gap:10px; margin-top: 20px;">
                     <a href="/" class="btn" style="background:#333; color:#fff; flex:1;">QUAY LẠI</a>
@@ -308,7 +335,7 @@ HTML_DASHBOARD = """
             <h2 class="neon-title" style="margin:0;">KEY MANAGEMENT SYSTEM</h2>
             <div class="nav-links">
                 Tài khoản: <b class="neon-pink">{{ session['admin'] }}</b>
-                <a href="/change-password">[Đổi Mật Khẩu]</a>
+                <a href="/change-password">[Đổi Tên / Mật Khẩu]</a>
                 <a href="/logout" style="color:#ff1744;">[Thoát]</a>
             </div>
         </div>
@@ -415,6 +442,7 @@ HTML_DASHBOARD = """
                             <th>Tên Admin</th>
                             <th>Mật Khẩu</th>
                             <th>Cấp độ</th>
+                            <th>IP Đăng Nhập</th>
                             <th>Trạng Thái</th>
                             <th>Lần Cuối Hoạt Động (Giờ VN)</th>
                             <th>Hành Động</th>
@@ -439,6 +467,7 @@ HTML_DASHBOARD = """
                                 {% endif %}
                             </td>
                             <td>{% if a['is_super'] == 1 %}<b style="color:#00e676">SUPER ADMIN</b>{% else %}Admin Chi Nhánh{% endif %}</td>
+                            <td><small style="color:#00f3ff; font-weight:bold;">{{ a['last_ip'] or 'Chưa ghi nhận' }}</small></td>
                             <td>
                                 {% if a['is_online'] %}
                                     <span class="badge badge-online">● ONLINE</span>
@@ -472,11 +501,12 @@ HTML_DASHBOARD = """
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
-    error = None
+    error = request.args.get('error')
     if request.method == 'POST':
         username = request.form['username']
         password = request.form['password']
         remember = request.form.get('remember')
+        client_ip = get_client_ip()
         
         conn = get_db()
         user = conn.execute("SELECT * FROM admin_users WHERE username = ?", (username,)).fetchone()
@@ -491,7 +521,8 @@ def login():
                 session.permanent = False
                 
             now_str = get_vn_now_str()
-            conn.execute("UPDATE admin_users SET last_login = ?, last_active = ? WHERE id = ?", (now_str, now_str, user['id']))
+            conn.execute("UPDATE admin_users SET last_login = ?, last_active = ?, last_ip = ? WHERE id = ?", 
+                         (now_str, now_str, client_ip, user['id']))
             conn.commit()
             conn.close()
             
@@ -538,27 +569,41 @@ def dashboard():
 @app.route('/change-password', methods=['GET', 'POST'])
 @login_required
 def change_password():
-    if request.method == 'GET':
-        return render_template_string(HTML_CHANGE_PASSWORD)
-        
-    old_password = request.form['old_password']
-    new_password = request.form['new_password']
     current_username = session['admin']
+    if request.method == 'GET':
+        return render_template_string(HTML_CHANGE_PASSWORD, current_username=current_username)
+        
+    new_username = request.form.get('new_username', '').strip()
+    old_password = request.form['old_password']
+    new_password = request.form.get('new_password', '').strip()
 
     conn = get_db()
     user = conn.execute("SELECT * FROM admin_users WHERE username = ?", (current_username,)).fetchone()
 
     if not user or not check_password_hash(user['password'], old_password):
         conn.close()
-        return render_template_string(HTML_CHANGE_PASSWORD, err="Mật khẩu hiện tại không chính xác!")
+        return render_template_string(HTML_CHANGE_PASSWORD, current_username=current_username, err="Mật khẩu hiện tại không chính xác!")
 
-    new_hashed_pw = generate_password_hash(new_password)
-    conn.execute("UPDATE admin_users SET password = ?, plain_password = ? WHERE username = ?", 
-                 (new_hashed_pw, new_password, current_username))
+    # Nếu đổi tên đăng nhập khác tên hiện tại, kiểm tra trùng lặp
+    if new_username and new_username != current_username:
+        exist_user = conn.execute("SELECT * FROM admin_users WHERE username = ?", (new_username,)).fetchone()
+        if exist_user:
+            conn.close()
+            return render_template_string(HTML_CHANGE_PASSWORD, current_username=current_username, err="Tên đăng nhập mới đã tồn tại trên hệ thống!")
+
+    # Cập nhật thông tin
+    final_password = new_password if new_password else old_password
+    new_hashed_pw = generate_password_hash(final_password)
+
+    conn.execute("UPDATE admin_users SET username = ?, password = ?, plain_password = ? WHERE username = ?", 
+                 (new_username, new_hashed_pw, final_password, current_username))
     conn.commit()
     conn.close()
 
-    return render_template_string(HTML_CHANGE_PASSWORD, msg="Đã cập nhật mật khẩu mới thành công!")
+    # Cập nhật lại session tên mới
+    session['admin'] = new_username
+
+    return render_template_string(HTML_CHANGE_PASSWORD, current_username=new_username, msg="Đã cập nhật thông tin tài khoản thành công!")
 
 @app.route('/create-key', methods=['POST'])
 @login_required
@@ -639,11 +684,7 @@ def delete_admin(admin_id):
 def api_verify_key():
     data = request.get_json() or {}
     key_code = data.get('key', '').strip()
-
-    if request.headers.get('X-Forwarded-For'):
-        client_ip = request.headers.get('X-Forwarded-For').split(',')[0].strip()
-    else:
-        client_ip = request.remote_addr.strip()
+    client_ip = get_client_ip()
 
     if not key_code:
         return jsonify({"valid": False, "message": "Key không được để trống!"}), 400
