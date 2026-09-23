@@ -15,15 +15,12 @@ DATABASE = "key_system.db"
 VN_TZ = datetime.timezone(datetime.timedelta(hours=7))
 
 def get_vn_now():
-    """Lấy thời gian hiện tại chuẩn giờ Việt Nam (UTC+7)"""
     return datetime.datetime.now(VN_TZ)
 
 def get_vn_now_str():
-    """Trả về chuỗi thời gian Việt Nam dạng YYYY-MM-DD HH:MM:SS"""
     return get_vn_now().strftime('%Y-%m-%d %H:%M:%S')
 
 def get_client_ip():
-    """Lấy IP thực tế của Client"""
     if request.headers.get('X-Forwarded-For'):
         return request.headers.get('X-Forwarded-For').split(',')[0].strip()
     return request.remote_addr.strip() if request.remote_addr else "127.0.0.1"
@@ -52,24 +49,29 @@ def init_db():
         )
     ''')
     
-    # Bảng Key
+    # Bảng Key (Đã thêm usage_limit và current_usage, xóa expires_at)
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS keys (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             key_code TEXT UNIQUE NOT NULL,
             max_devices INTEGER DEFAULT 1,
             used_devices INTEGER DEFAULT 0,
+            usage_limit INTEGER DEFAULT 1,
+            current_usage INTEGER DEFAULT 0,
             status TEXT DEFAULT 'active',
             ip_logs TEXT DEFAULT '',
             created_by TEXT DEFAULT 'Hệ thống',
-            expires_at DATETIME NOT NULL,
             created_at DATETIME
         )
     ''')
     
-    # Cập nhật cấu trúc bảng nếu nâng cấp từ DB cũ
+    # Cập nhật cấu trúc bảng nếu nâng cấp từ DB cũ (Thêm cột mới)
     try:
-        cursor.execute("ALTER TABLE keys ADD COLUMN created_by TEXT DEFAULT 'Hệ thống'")
+        cursor.execute("ALTER TABLE keys ADD COLUMN usage_limit INTEGER DEFAULT 1")
+    except sqlite3.OperationalError:
+        pass
+    try:
+        cursor.execute("ALTER TABLE keys ADD COLUMN current_usage INTEGER DEFAULT 0")
     except sqlite3.OperationalError:
         pass
 
@@ -77,12 +79,10 @@ def init_db():
         cursor.execute("ALTER TABLE admin_users ADD COLUMN last_login DATETIME")
     except sqlite3.OperationalError:
         pass
-
     try:
         cursor.execute("ALTER TABLE admin_users ADD COLUMN last_active DATETIME")
     except sqlite3.OperationalError:
         pass
-
     try:
         cursor.execute("ALTER TABLE admin_users ADD COLUMN last_ip TEXT DEFAULT ''")
     except sqlite3.OperationalError:
@@ -115,7 +115,6 @@ def login_required(f):
         if 'admin' not in session:
             return redirect(url_for('login'))
         
-        # Kiểm tra sự tồn tại của Admin trong CSDL (Xoá tài khoản -> Đăng xuất lập tức)
         conn = get_db()
         user = conn.execute("SELECT * FROM admin_users WHERE username = ?", (session['admin'],)).fetchone()
         conn.close()
@@ -129,141 +128,63 @@ def login_required(f):
     return decorated_function
 
 # ==================== STYLES & TEMPLATES ====================
-
 COMMON_CSS = """
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Rajdhani:wght@500;600;700&display=swap');
-    
     * { box-sizing: border-box; transition: all 0.25s ease-in-out; }
-    body { 
-        font-family: 'Rajdhani', -apple-system, sans-serif; 
-        background: linear-gradient(135deg, #0a0a16 0%, #1a0933 50%, #0d1b2a 100%);
-        background-attachment: fixed;
-        color: #e0e6ed; 
-        margin: 0; 
-        padding: 15px; 
-        min-height: 100vh;
-    }
-    
+    body { font-family: 'Rajdhani', -apple-system, sans-serif; background: linear-gradient(135deg, #0a0a16 0%, #1a0933 50%, #0d1b2a 100%); background-attachment: fixed; color: #e0e6ed; margin: 0; padding: 15px; min-height: 100vh; }
     h1, h2, h3, h4 { font-family: 'Orbitron', sans-serif; letter-spacing: 1px; }
     .neon-title { color: #00f3ff; text-shadow: 0 0 10px rgba(0,243,255,0.7), 0 0 20px rgba(0,243,255,0.4); }
     .neon-pink { color: #ff007f; text-shadow: 0 0 10px rgba(255,0,127,0.7); }
     .neon-purple { color: #b500ff; text-shadow: 0 0 10px rgba(181,0,255,0.7); }
-    
-    .card { 
-        background: rgba(20, 24, 45, 0.75); 
-        backdrop-filter: blur(12px);
-        padding: 22px; 
-        margin-bottom: 20px; 
-        border-radius: 16px; 
-        border: 1px solid rgba(0, 243, 255, 0.2); 
-        box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.5), inset 0 0 15px rgba(0, 243, 255, 0.05);
-    }
-    .card:hover {
-        border-color: rgba(255, 0, 127, 0.4);
-        box-shadow: 0 8px 32px 0 rgba(255, 0, 127, 0.2);
-    }
-    
+    .card { background: rgba(20, 24, 45, 0.75); backdrop-filter: blur(12px); padding: 22px; margin-bottom: 20px; border-radius: 16px; border: 1px solid rgba(0, 243, 255, 0.2); box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.5), inset 0 0 15px rgba(0, 243, 255, 0.05); }
+    .card:hover { border-color: rgba(255, 0, 127, 0.4); box-shadow: 0 8px 32px 0 rgba(255, 0, 127, 0.2); }
     .form-group { margin-bottom: 12px; }
     .form-group label { display: block; margin-bottom: 6px; font-size: 14px; color: #00f3ff; font-weight: 600; }
-    input[type="text"], input[type="password"], input[type="number"] { 
-        width: 100%; 
-        padding: 12px 14px; 
-        border-radius: 8px; 
-        border: 1px solid #2a3b5c; 
-        background: rgba(10, 14, 30, 0.8); 
-        color: #fff; 
-        font-size: 15px;
-        outline: none;
-    }
+    input[type="text"], input[type="password"], input[type="number"] { width: 100%; padding: 12px 14px; border-radius: 8px; border: 1px solid #2a3b5c; background: rgba(10, 14, 30, 0.8); color: #fff; font-size: 15px; outline: none; }
     input:focus { border-color: #ff007f; box-shadow: 0 0 12px rgba(255,0,127,0.5); }
-    
-    .btn { 
-        padding: 10px 18px; 
-        border-radius: 8px; 
-        border: none; 
-        font-weight: bold; 
-        cursor: pointer; 
-        font-size: 14px; 
-        font-family: 'Orbitron', sans-serif;
-        display: inline-block;
-        text-align: center;
-        text-decoration: none;
-        text-transform: uppercase;
-    }
+    .btn { padding: 10px 18px; border-radius: 8px; border: none; font-weight: bold; cursor: pointer; font-size: 14px; font-family: 'Orbitron', sans-serif; display: inline-block; text-align: center; text-decoration: none; text-transform: uppercase; }
     .btn-glow-green { background: linear-gradient(45deg, #00e676, #00b0ff); color: #000; box-shadow: 0 0 15px rgba(0,230,118,0.4); }
     .btn-glow-green:hover { box-shadow: 0 0 25px rgba(0,230,118,0.8); transform: translateY(-2px); }
-    
     .btn-glow-pink { background: linear-gradient(45deg, #ff007f, #7928ca); color: #fff; box-shadow: 0 0 15px rgba(255,0,127,0.4); }
     .btn-glow-pink:hover { box-shadow: 0 0 25px rgba(255,0,127,0.8); transform: translateY(-2px); }
-    
     .btn-danger { background: #ff1744; color: #fff; padding: 6px 12px; font-size: 12px; box-shadow: 0 0 10px rgba(255,23,68,0.4); }
     .btn-danger:hover { background: #d50000; box-shadow: 0 0 18px rgba(255,23,68,0.8); }
-    
     .btn-copy { background: rgba(0, 243, 255, 0.15); color: #00f3ff; border: 1px solid #00f3ff; padding: 4px 10px; font-size: 11px; border-radius: 6px; cursor: pointer; font-weight: bold; margin-left: 6px; }
     .btn-copy:hover { background: #00f3ff; color: #000; box-shadow: 0 0 10px #00f3ff; }
-    
     .table-responsive { width: 100%; overflow-x: auto; border-radius: 10px; border: 1px solid rgba(0, 243, 255, 0.2); }
     table { width: 100%; border-collapse: collapse; min-width: 650px; white-space: nowrap; }
     th, td { border-bottom: 1px solid rgba(255,255,255,0.08); padding: 12px 15px; text-align: left; font-size: 14px; }
     th { background: rgba(0, 243, 255, 0.1); color: #00f3ff; font-family: 'Orbitron', sans-serif; font-size: 12px; }
     tr:hover { background: rgba(255, 0, 127, 0.08); }
-    
     .badge { padding: 4px 10px; border-radius: 20px; font-size: 11px; font-weight: bold; text-transform: uppercase; }
     .badge-online { background: rgba(0,230,118,0.2); color: #00e676; border: 1px solid #00e676; box-shadow: 0 0 8px rgba(0,230,118,0.5); }
     .badge-offline { background: rgba(158,158,158,0.2); color: #9e9e9e; border: 1px solid #757575; }
-    
     .container { max-width: 1100px; margin: auto; }
     .header { display: flex; flex-direction: column; gap: 12px; margin-bottom: 20px; border-bottom: 2px solid rgba(0,243,255,0.3); padding-bottom: 15px; }
     .nav-links a { color: #00f3ff; text-decoration: none; font-weight: bold; margin-left: 12px; font-size: 14px; }
     .nav-links a:hover { color: #ff007f; text-shadow: 0 0 8px #ff007f; }
-    
     .alert { padding: 12px; border-radius: 8px; margin-bottom: 15px; font-size: 14px; border: 1px solid; }
     .alert-success { background: rgba(0, 230, 118, 0.15); border-color: #00e676; color: #69f0ae; }
     .alert-danger { background: rgba(255, 23, 68, 0.15); border-color: #ff1744; color: #ff8a80; }
-    
     .checkbox-container { display: flex; align-items: center; gap: 8px; font-size: 14px; color: #bbb; cursor: pointer; margin: 10px 0; }
     .checkbox-container input { width: 16px; height: 16px; accent-color: #ff007f; cursor: pointer; }
-
-    @media (min-width: 600px) {
-        .header { flex-direction: row; justify-content: space-between; align-items: center; }
-        .form-row { display: flex; gap: 12px; align-items: flex-end; }
-        .form-row .form-group { flex: 1; margin-bottom: 0; }
-    }
+    @media (min-width: 600px) { .header { flex-direction: row; justify-content: space-between; align-items: center; } .form-row { display: flex; gap: 12px; align-items: flex-end; } .form-row .form-group { flex: 1; margin-bottom: 0; } }
 </style>
 """
 
 HTML_LOGIN = """
 <!DOCTYPE html>
 <html>
-<head>
-    <title>Đăng nhập Admin Cyber</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    """ + COMMON_CSS + """
-    <style>
-        body { display:flex; justify-content:center; align-items:center; height:100vh; }
-        .login-card { width: 100%; max-width: 380px; border: 1px solid rgba(255,0,127,0.4); box-shadow: 0 0 25px rgba(255,0,127,0.2); }
-    </style>
-</head>
+<head><title>Đăng nhập Admin Cyber</title><meta name="viewport" content="width=device-width, initial-scale=1.0">""" + COMMON_CSS + """<style>body { display:flex; justify-content:center; align-items:center; height:100vh; } .login-card { width: 100%; max-width: 380px; border: 1px solid rgba(255,0,127,0.4); box-shadow: 0 0 25px rgba(255,0,127,0.2); }</style></head>
 <body>
     <div class="card login-card">
         <h2 class="neon-title" style="text-align: center; margin-top:0;">SYSTEM LOGIN</h2>
         {% if error %}<div class="alert alert-danger">{{ error }}</div>{% endif %}
         <form method="POST">
-            <div class="form-group">
-                <label>TÊN ĐĂNG NHẬP</label>
-                <input type="text" name="username" placeholder="Nhập username..." required>
-            </div>
-            <div class="form-group">
-                <label>MẬT KHẨU</label>
-                <input type="password" name="password" placeholder="Nhập password..." required>
-            </div>
-            
-            <label class="checkbox-container">
-                <input type="checkbox" name="remember" value="yes">
-                Ghi nhớ đăng nhập (30 ngày)
-            </label>
-            
+            <div class="form-group"><label>TÊN ĐĂNG NHẬP</label><input type="text" name="username" placeholder="Nhập username..." required></div>
+            <div class="form-group"><label>MẬT KHẨU</label><input type="password" name="password" placeholder="Nhập password..." required></div>
+            <label class="checkbox-container"><input type="checkbox" name="remember" value="yes"> Ghi nhớ đăng nhập (30 ngày)</label>
             <button type="submit" class="btn btn-glow-pink" style="width:100%; margin-top:15px;">ĐĂNG NHẬP</button>
         </form>
     </div>
@@ -274,32 +195,17 @@ HTML_LOGIN = """
 HTML_CHANGE_PASSWORD = """
 <!DOCTYPE html>
 <html>
-<head>
-    <title>Cài Đặt Tài Khoản</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    """ + COMMON_CSS + """
-</head>
+<head><title>Cài Đặt Tài Khoản</title><meta name="viewport" content="width=device-width, initial-scale=1.0">""" + COMMON_CSS + """</head>
 <body>
     <div class="container" style="max-width: 500px; margin-top: 50px;">
         <div class="card">
             <h2 class="neon-pink" style="margin-top:0; text-align:center;">CÀI ĐẶT TÀI KHOẢN</h2>
-            
             {% if msg %}<div class="alert alert-success">{{ msg }}</div>{% endif %}
             {% if err %}<div class="alert alert-danger">{{ err }}</div>{% endif %}
-
             <form action="/change-password" method="POST">
-                <div class="form-group">
-                    <label>Tên đăng nhập mới:</label>
-                    <input type="text" name="new_username" value="{{ current_username }}" required placeholder="Nhập tên đăng nhập mới">
-                </div>
-                <div class="form-group">
-                    <label>Mật khẩu hiện tại (Xác nhận):</label>
-                    <input type="password" name="old_password" required placeholder="Nhập mật khẩu hiện tại">
-                </div>
-                <div class="form-group">
-                    <label>Mật khẩu mới (Để trống nếu giữ nguyên):</label>
-                    <input type="password" name="new_password" placeholder="Nhập mật khẩu mới">
-                </div>
+                <div class="form-group"><label>Tên đăng nhập mới:</label><input type="text" name="new_username" value="{{ current_username }}" required placeholder="Nhập tên đăng nhập mới"></div>
+                <div class="form-group"><label>Mật khẩu hiện tại (Xác nhận):</label><input type="password" name="old_password" required placeholder="Nhập mật khẩu hiện tại"></div>
+                <div class="form-group"><label>Mật khẩu mới (Để trống nếu giữ nguyên):</label><input type="password" name="new_password" placeholder="Nhập mật khẩu mới"></div>
                 <div style="display:flex; gap:10px; margin-top: 20px;">
                     <a href="/" class="btn" style="background:#333; color:#fff; flex:1;">QUAY LẠI</a>
                     <button type="submit" class="btn btn-glow-pink" style="flex:1;">CẬP NHẬT</button>
@@ -315,31 +221,15 @@ HTML_DASHBOARD = """
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Dashboard Cyber Key Manager</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    """ + COMMON_CSS + """
-    <script>
-        function copyToClipboard(text) {
-            if (!text) return alert('Không có nội dung!');
-            navigator.clipboard.writeText(text).then(function() {
-                alert('Đã sao chép: ' + text);
-            }, function(err) {
-                alert('Lỗi: ' + err);
-            });
-        }
-    </script>
+    <title>Dashboard Cyber Key Manager</title><meta name="viewport" content="width=device-width, initial-scale=1.0">""" + COMMON_CSS + """
+    <script>function copyToClipboard(text) { if (!text) return alert('Không có nội dung!'); navigator.clipboard.writeText(text).then(function() { alert('Đã sao chép: ' + text); }, function(err) { alert('Lỗi: ' + err); }); }</script>
 </head>
 <body>
     <div class="container">
         <div class="header">
             <h2 class="neon-title" style="margin:0;">KEY MANAGEMENT SYSTEM</h2>
-            <div class="nav-links">
-                Tài khoản: <b class="neon-pink">{{ session['admin'] }}</b>
-                <a href="/change-password">[Đổi Tên / Mật Khẩu]</a>
-                <a href="/logout" style="color:#ff1744;">[Thoát]</a>
-            </div>
+            <div class="nav-links">Tài khoản: <b class="neon-pink">{{ session['admin'] }}</b> <a href="/change-password">[Đổi Tên / Mật Khẩu]</a> <a href="/logout" style="color:#ff1744;">[Thoát]</a></div>
         </div>
-
         {% if msg %}<div class="alert alert-success">{{ msg }}</div>{% endif %}
         {% if err %}<div class="alert alert-danger">{{ err }}</div>{% endif %}
 
@@ -348,21 +238,10 @@ HTML_DASHBOARD = """
             <h3 class="neon-pink">TẠO KEY MỚI</h3>
             <form action="/create-key" method="POST">
                 <div class="form-row">
-                    <div class="form-group">
-                        <label>Tên Key Custom (Bỏ trống để tự sinh):</label>
-                        <input type="text" name="custom_key" placeholder="Ví dụ: VIP-KEY-2026">
-                    </div>
-                    <div class="form-group">
-                        <label>Thời hạn (Giờ):</label>
-                        <input type="number" name="hours" value="24" required min="1">
-                    </div>
-                    <div class="form-group">
-                        <label>Số thiết bị (IP tối đa):</label>
-                        <input type="number" name="max_devices" value="1" required min="1">
-                    </div>
-                    <div class="form-group">
-                        <button type="submit" class="btn btn-glow-green" style="width:100%;">TẠO KEY</button>
-                    </div>
+                    <div class="form-group"><label>Tên Key Custom (Bỏ trống để tự sinh):</label><input type="text" name="custom_key" placeholder="Ví dụ: VIP-KEY-2026"></div>
+                    <div class="form-group"><label>Giới hạn lượt dùng:</label><input type="number" name="usage_limit" value="10" required min="1"></div>
+                    <div class="form-group"><label>Số thiết bị (IP tối đa):</label><input type="number" name="max_devices" value="1" required min="1"></div>
+                    <div class="form-group"><button type="submit" class="btn btn-glow-green" style="width:100%;">TẠO KEY</button></div>
                 </div>
             </form>
         </div>
@@ -372,42 +251,19 @@ HTML_DASHBOARD = """
             <h3 class="neon-title">DANH SÁCH KEY</h3>
             <div class="table-responsive">
                 <table>
-                    <thead>
-                        <tr>
-                            <th>ID</th>
-                            <th>Mã Key</th>
-                            <th>Người Tạo</th>
-                            <th>Thiết bị (Dùng/Tối đa)</th>
-                            <th>Trạng thái</th>
-                            <th>IP Đã Dùng</th>
-                            <th>Hết Hạn Lúc (Giờ VN)</th>
-                            <th>Hành Động</th>
-                        </tr>
-                    </thead>
+                    <thead><tr><th>ID</th><th>Mã Key</th><th>Người Tạo</th><th>Thiết bị</th><th>Lượt Dùng</th><th>Trạng thái</th><th>IP Đã Dùng</th><th>Ngày Tạo</th><th>Hành Động</th></tr></thead>
                     <tbody>
                         {% for k in keys %}
                         <tr>
                             <td>{{ k['id'] }}</td>
-                            <td>
-                                <b class="neon-title">{{ k['key_code'] }}</b>
-                                <button class="btn-copy" onclick="copyToClipboard('{{ k['key_code'] }}')">Copy</button>
-                            </td>
+                            <td><b class="neon-title">{{ k['key_code'] }}</b><button class="btn-copy" onclick="copyToClipboard('{{ k['key_code'] }}')">Copy</button></td>
                             <td><b style="color:#ff007f;">{{ k['created_by'] or 'Hệ thống' }}</b></td>
                             <td>{{ k['used_devices'] }} / {{ k['max_devices'] }}</td>
-                            <td>
-                                {% if k['status'] == 'active' %}
-                                    <span style="color:#00e676; font-weight:bold;">HOẠT ĐỘNG</span>
-                                {% else %}
-                                    <span style="color:#ff1744; font-weight:bold;">VÔ HIỆU</span>
-                                {% endif %}
-                            </td>
+                            <td><b class="neon-title">{{ k['current_usage'] }} / {{ k['usage_limit'] }}</b></td>
+                            <td>{% if k['status'] == 'active' %}<span style="color:#00e676; font-weight:bold;">HOẠT ĐỘNG</span>{% else %}<span style="color:#ff1744; font-weight:bold;">VÔ HIỆU</span>{% endif %}</td>
                             <td><small style="color:#aaa;">{{ k['ip_logs'] or 'Chưa có' }}</small></td>
-                            <td>{{ k['expires_at'] }}</td>
-                            <td>
-                                <a href="/delete-key/{{ k['id'] }}" onclick="return confirm('Bạn có chắc muốn xóa key này?')">
-                                    <button class="btn btn-danger">XÓA</button>
-                                </a>
-                            </td>
+                            <td><small>{{ k['created_at'] }}</small></td>
+                            <td><a href="/delete-key/{{ k['id'] }}" onclick="return confirm('Bạn có chắc muốn xóa key này?')"><button class="btn btn-danger">XÓA</button></a></td>
                         </tr>
                         {% endfor %}
                     </tbody>
@@ -421,70 +277,26 @@ HTML_DASHBOARD = """
             <h3 class="neon-purple">QUẢN LÝ ADMIN & TRẠNG THÁI</h3>
             <form action="/create-admin" method="POST">
                 <div class="form-row">
-                    <div class="form-group">
-                        <input type="text" name="username" placeholder="Tên đăng nhập Admin mới" required>
-                    </div>
-                    <div class="form-group">
-                        <input type="password" name="password" placeholder="Mật khẩu" required>
-                    </div>
-                    <div class="form-group">
-                        <button type="submit" class="btn btn-glow-pink" style="width:100%;">TẠO ADMIN</button>
-                    </div>
+                    <div class="form-group"><input type="text" name="username" placeholder="Tên đăng nhập Admin mới" required></div>
+                    <div class="form-group"><input type="password" name="password" placeholder="Mật khẩu" required></div>
+                    <div class="form-group"><button type="submit" class="btn btn-glow-pink" style="width:100%;">TẠO ADMIN</button></div>
                 </div>
             </form>
-
             <h4 style="margin-top:25px; color:#00f3ff;">DANH SÁCH ADMIN HỆ THỐNG</h4>
             <div class="table-responsive">
                 <table>
-                    <thead>
-                        <tr>
-                            <th>ID</th>
-                            <th>Tên Admin</th>
-                            <th>Mật Khẩu</th>
-                            <th>Cấp độ</th>
-                            <th>IP Đăng Nhập</th>
-                            <th>Trạng Thái</th>
-                            <th>Lần Cuối Hoạt Động (Giờ VN)</th>
-                            <th>Hành Động</th>
-                        </tr>
-                    </thead>
+                    <thead><tr><th>ID</th><th>Tên Admin</th><th>Mật Khẩu</th><th>Cấp độ</th><th>IP Đăng Nhập</th><th>Trạng Thái</th><th>Lần Cuối Hoạt Động</th><th>Hành Động</th></tr></thead>
                     <tbody>
                         {% for a in admins %}
                         <tr>
                             <td>{{ a['id'] }}</td>
-                            <td>
-                                <b>{{ a['username'] }}</b>
-                                {% if a['is_super'] == 0 %}
-                                    <button class="btn-copy" onclick="copyToClipboard('{{ a['username'] }}')">Copy</button>
-                                {% endif %}
-                            </td>
-                            <td>
-                                {% if a['is_super'] == 0 %}
-                                    <span>{{ a['plain_password'] or '******' }}</span>
-                                    <button class="btn-copy" onclick="copyToClipboard('{{ a['plain_password'] }}')">Copy</button>
-                                {% else %}
-                                    <i>Bảo mật Gốc</i>
-                                {% endif %}
-                            </td>
+                            <td><b>{{ a['username'] }}</b>{% if a['is_super'] == 0 %}<button class="btn-copy" onclick="copyToClipboard('{{ a['username'] }}')">Copy</button>{% endif %}</td>
+                            <td>{% if a['is_super'] == 0 %}<span>{{ a['plain_password'] or '******' }}</span><button class="btn-copy" onclick="copyToClipboard('{{ a['plain_password'] }}')">Copy</button>{% else %}<i>Bảo mật Gốc</i>{% endif %}</td>
                             <td>{% if a['is_super'] == 1 %}<b style="color:#00e676">SUPER ADMIN</b>{% else %}Admin Chi Nhánh{% endif %}</td>
                             <td><small style="color:#00f3ff; font-weight:bold;">{{ a['last_ip'] or 'Chưa ghi nhận' }}</small></td>
-                            <td>
-                                {% if a['is_online'] %}
-                                    <span class="badge badge-online">● ONLINE</span>
-                                {% else %}
-                                    <span class="badge badge-offline">○ OFFLINE</span>
-                                {% endif %}
-                            </td>
+                            <td>{% if a['is_online'] %}<span class="badge badge-online">● ONLINE</span>{% else %}<span class="badge badge-offline">○ OFFLINE</span>{% endif %}</td>
                             <td><small style="color:#aaa;">{{ a['last_active'] or 'Chưa ghi nhận' }}</small></td>
-                            <td>
-                                {% if a['is_super'] == 0 %}
-                                    <a href="/delete-admin/{{ a['id'] }}" onclick="return confirm('Xóa Admin này?')">
-                                        <button class="btn btn-danger">XÓA</button>
-                                    </a>
-                                {% else %}
-                                    <i style="color:#555;">Mặc định</i>
-                                {% endif %}
-                            </td>
+                            <td>{% if a['is_super'] == 0 %}<a href="/delete-admin/{{ a['id'] }}" onclick="return confirm('Xóa Admin này?')"><button class="btn btn-danger">XÓA</button></a>{% else %}<i style="color:#555;">Mặc định</i>{% endif %}</td>
                         </tr>
                         {% endfor %}
                     </tbody>
@@ -498,7 +310,6 @@ HTML_DASHBOARD = """
 """
 
 # ==================== ROUTES ====================
-
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     error = request.args.get('error')
@@ -507,30 +318,20 @@ def login():
         password = request.form['password']
         remember = request.form.get('remember')
         client_ip = get_client_ip()
-        
         conn = get_db()
         user = conn.execute("SELECT * FROM admin_users WHERE username = ?", (username,)).fetchone()
-        
         if user and check_password_hash(user['password'], password):
             session['admin'] = user['username']
             session['is_super'] = user['is_super']
-            
-            if remember == 'yes':
-                session.permanent = True
-            else:
-                session.permanent = False
-                
+            session.permanent = (remember == 'yes')
             now_str = get_vn_now_str()
-            conn.execute("UPDATE admin_users SET last_login = ?, last_active = ?, last_ip = ? WHERE id = ?", 
-                         (now_str, now_str, client_ip, user['id']))
+            conn.execute("UPDATE admin_users SET last_login = ?, last_active = ?, last_ip = ? WHERE id = ?", (now_str, now_str, client_ip, user['id']))
             conn.commit()
             conn.close()
-            
             return redirect(url_for('dashboard'))
         else:
             conn.close()
             error = "Tài khoản hoặc mật khẩu không đúng!"
-            
     return render_template_string(HTML_LOGIN, error=error)
 
 @app.route('/logout')
@@ -544,10 +345,8 @@ def dashboard():
     msg = request.args.get('msg')
     err = request.args.get('err')
     conn = get_db()
-    
     keys = conn.execute("SELECT * FROM keys ORDER BY id DESC").fetchall()
     raw_admins = conn.execute("SELECT * FROM admin_users ORDER BY id ASC").fetchall()
-    
     admins = []
     now = get_vn_now().replace(tzinfo=None)
     for a in raw_admins:
@@ -556,13 +355,10 @@ def dashboard():
         if admin_dict.get('last_active'):
             try:
                 last_act = datetime.datetime.strptime(admin_dict['last_active'], '%Y-%m-%d %H:%M:%S')
-                if (now - last_act).total_seconds() < 300: # Trong vòng 5 phút
-                    is_online = True
-            except ValueError:
-                pass
+                if (now - last_act).total_seconds() < 300: is_online = True
+            except ValueError: pass
         admin_dict['is_online'] = is_online
         admins.append(admin_dict)
-        
     conn.close()
     return render_template_string(HTML_DASHBOARD, keys=keys, admins=admins, is_super_admin=(session.get('is_super') == 1), msg=msg, err=err)
 
@@ -572,61 +368,42 @@ def change_password():
     current_username = session['admin']
     if request.method == 'GET':
         return render_template_string(HTML_CHANGE_PASSWORD, current_username=current_username)
-        
     new_username = request.form.get('new_username', '').strip()
     old_password = request.form['old_password']
     new_password = request.form.get('new_password', '').strip()
-
     conn = get_db()
     user = conn.execute("SELECT * FROM admin_users WHERE username = ?", (current_username,)).fetchone()
-
     if not user or not check_password_hash(user['password'], old_password):
         conn.close()
         return render_template_string(HTML_CHANGE_PASSWORD, current_username=current_username, err="Mật khẩu hiện tại không chính xác!")
-
-    # Nếu đổi tên đăng nhập khác tên hiện tại, kiểm tra trùng lặp
     if new_username and new_username != current_username:
         exist_user = conn.execute("SELECT * FROM admin_users WHERE username = ?", (new_username,)).fetchone()
         if exist_user:
             conn.close()
             return render_template_string(HTML_CHANGE_PASSWORD, current_username=current_username, err="Tên đăng nhập mới đã tồn tại trên hệ thống!")
-
-    # Cập nhật thông tin
     final_password = new_password if new_password else old_password
     new_hashed_pw = generate_password_hash(final_password)
-
-    conn.execute("UPDATE admin_users SET username = ?, password = ?, plain_password = ? WHERE username = ?", 
-                 (new_username, new_hashed_pw, final_password, current_username))
+    conn.execute("UPDATE admin_users SET username = ?, password = ?, plain_password = ? WHERE username = ?", (new_username, new_hashed_pw, final_password, current_username))
     conn.commit()
     conn.close()
-
-    # Cập nhật lại session tên mới
     session['admin'] = new_username
-
     return render_template_string(HTML_CHANGE_PASSWORD, current_username=new_username, msg="Đã cập nhật thông tin tài khoản thành công!")
 
 @app.route('/create-key', methods=['POST'])
 @login_required
 def create_key():
     custom_key = request.form.get('custom_key', '').strip()
-    hours = int(request.form.get('hours', 24))
     max_devices = int(request.form.get('max_devices', 1))
+    usage_limit = int(request.form.get('usage_limit', 10))
     created_by = session.get('admin', 'Unknown')
     
-    if custom_key:
-        key_code = custom_key
-    else:
-        key_code = "KEY-" + str(uuid.uuid4()).upper()[:12]
-        
-    expires_at = get_vn_now() + datetime.timedelta(hours=hours)
+    key_code = custom_key if custom_key else "KEY-" + str(uuid.uuid4()).upper()[:12]
     created_at = get_vn_now()
     
     conn = get_db()
     try:
-        conn.execute("INSERT INTO keys (key_code, max_devices, created_by, expires_at, created_at) VALUES (?, ?, ?, ?, ?)",
-                     (key_code, max_devices, created_by, 
-                      expires_at.strftime('%Y-%m-%d %H:%M:%S'), 
-                      created_at.strftime('%Y-%m-%d %H:%M:%S')))
+        conn.execute("INSERT INTO keys (key_code, max_devices, usage_limit, created_by, created_at) VALUES (?, ?, ?, ?, ?)",
+                     (key_code, max_devices, usage_limit, created_by, created_at.strftime('%Y-%m-%d %H:%M:%S')))
         conn.commit()
     except sqlite3.IntegrityError:
         conn.close()
@@ -648,18 +425,14 @@ def delete_key(key_id):
 def create_admin():
     if session.get('is_super') != 1:
         return redirect(url_for('dashboard', err="Bạn không có quyền thực hiện!"))
-        
     username = request.form['username'].strip()
     password = request.form['password'].strip()
-    
     if not username or not password:
         return redirect(url_for('dashboard', err="Vui lòng điền đầy đủ thông tin!"))
-
     conn = get_db()
     try:
         hashed_pw = generate_password_hash(password)
-        conn.execute("INSERT INTO admin_users (username, password, plain_password, is_super) VALUES (?, ?, ?, 0)", 
-                     (username, hashed_pw, password))
+        conn.execute("INSERT INTO admin_users (username, password, plain_password, is_super) VALUES (?, ?, ?, 0)", (username, hashed_pw, password))
         conn.commit()
         conn.close()
         return redirect(url_for('dashboard', msg=f"Tạo tài khoản Admin {username} thành công!"))
@@ -679,7 +452,6 @@ def delete_admin(admin_id):
     return redirect(url_for('dashboard', err="Bạn không có quyền thực hiện!"))
 
 # ==================== API FOR CLIENT TOOL ====================
-
 @app.route('/api/verify-key', methods=['POST'])
 def api_verify_key():
     data = request.get_json() or {}
@@ -696,12 +468,10 @@ def api_verify_key():
         conn.close()
         return jsonify({"valid": False, "message": "Key không tồn tại trên hệ thống!"})
 
-    expires_at = datetime.datetime.strptime(key_data['expires_at'], '%Y-%m-%d %H:%M:%S')
-    now_vn = get_vn_now().replace(tzinfo=None)
-    
-    if now_vn > expires_at:
+    # Kiểm tra giới hạn lượt sử dụng
+    if key_data['current_usage'] >= key_data['usage_limit']:
         conn.close()
-        return jsonify({"valid": False, "message": "Key này đã hết hạn sử dụng!"})
+        return jsonify({"valid": False, "message": "Key này đã đạt giới hạn số lần sử dụng!"})
 
     raw_ip_logs = key_data['ip_logs'] or ''
     ip_list = [ip.strip() for ip in raw_ip_logs.split(',') if ip.strip()]
@@ -709,26 +479,23 @@ def api_verify_key():
     if client_ip not in ip_list:
         if len(ip_list) >= key_data['max_devices']:
             conn.close()
-            return jsonify({
-                "valid": False, 
-                "message": f"Key đã đạt giới hạn tối đa ({key_data['max_devices']}) thiết bị!"
-            })
-        
+            return jsonify({"valid": False, "message": f"Key đã đạt giới hạn tối đa ({key_data['max_devices']}) thiết bị!"})
         ip_list.append(client_ip)
         new_ip_logs = ",".join(ip_list)
         new_used_devices = len(ip_list)
-        
-        conn.execute("UPDATE keys SET ip_logs = ?, used_devices = ? WHERE id = ?",
-                     (new_ip_logs, new_used_devices, key_data['id']))
-        conn.commit()
+    else:
+        new_ip_logs = raw_ip_logs
+        new_used_devices = key_data['used_devices']
 
+    # Tăng số lần sử dụng
+    new_current_usage = key_data['current_usage'] + 1
+    
+    conn.execute("UPDATE keys SET ip_logs = ?, used_devices = ?, current_usage = ? WHERE id = ?",
+                 (new_ip_logs, new_used_devices, new_current_usage, key_data['id']))
+    conn.commit()
     conn.close()
-    return jsonify({
-        "valid": True,
-        "message": "Xác thực thành công!",
-        "expires_at": key_data['expires_at'],
-        "client_ip": client_ip
-    })
+    
+    return jsonify({"valid": True, "message": "Xác thực thành công!", "client_ip": client_ip})
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)
